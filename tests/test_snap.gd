@@ -46,6 +46,17 @@ func _test_axis_assist() -> void:
 	ok(zone.is_home(o + up * 0.01 + side * 0.01), "home when pushed in and in line")
 	ok(not zone.is_home(o + up * 0.03), "not when above")
 	ok(not zone.is_home(o + side * 0.04), "not when off line")
+	var lateral: Vector3 = side * 0.04
+	var at_seat: float = zone.get_axis_assist(o + lateral)
+	ok(is_equal_approx(zone.get_axis_assist(o + lateral - up * 0.03), at_seat), "full strength down to 30 mm below the seat")
+	ok(zone.get_axis_assist(o + lateral - up * 0.05) == 0.0, "gone by 50 mm below it")
+	var worst_step: float = 0.0
+	var last: float = at_seat
+	for mm in range(0, 60):
+		var now: float = zone.get_axis_assist(o + lateral - up * (mm * 0.001))
+		worst_step = maxf(worst_step, absf(now - last))
+		last = now
+	ok(worst_step < at_seat * 0.1, "it eases out, with no sudden edge: worst %.3f per mm" % worst_step)
 
 
 func _test_axis_manual_capture() -> void:
