@@ -73,6 +73,25 @@ signal released(body)
 
 ## We only snap objects belonging to these physics layers
 @export_flags_3d_physics var detection_mask: int = 1
+
+## If [code]true[/code] an object let go in range is captured automatically.
+## If [code]false[/code] that's up to you, through [method capture_node].
+@export var auto_capture: bool = true
+
+@export_group("Axis assist")
+
+## How far above our zone, along our Y axis, we help an object into line.
+## With 0.0 there is no axis assist.
+@export var axis_length: float = 0.0
+
+## How far from our Y axis we help an object into line.
+@export var axis_radius: float = 0.07
+
+## Object is home when it's this close above our zone...
+@export var home_height: float = 0.016
+
+## ...and this close to our Y axis.
+@export var home_radius: float = 0.03
 #endregion
 
 
@@ -134,6 +153,43 @@ func get_closest_offset(global: bool = true):
 		return global_transform * _closest_offset
 	else:
 		return _closest_offset
+
+
+## Returns how much we help an object at this global position, from 0.0 to 1.0,
+## if we're using axis assist. It eases in along our axis and with distance from it.
+func get_axis_assist(at: Vector3) -> float:
+	if axis_length <= 0.0 or not enabled or _captured_body:
+		return 0.0
+
+	var local: Vector3 = global_transform.orthonormalized().inverse() * at
+	var lateral: float = Vector2(local.x, local.z).length()
+	if local.y > axis_length or local.y < -0.03 or lateral > axis_radius:
+		return 0.0
+
+	return smoothstep(0.0, 1.0, 1.0 - lateral / axis_radius) * smoothstep(0.0, 1.0, (axis_length - local.y) / (axis_length * 0.4))
+
+
+## Returns this global transform, eased into line with our axis as far as we help it.
+func get_axis_assisted(target: Transform3D) -> Transform3D:
+	var assist: float = get_axis_assist(target.origin)
+	if assist <= 0.0:
+		return target
+
+	return target.interpolate_with(get_on_axis(target.origin), assist)
+
+
+## Returns our orientation at the point on our axis nearest this global position,
+## never below our zone. Use this to slide an object along our axis.
+func get_on_axis(at: Vector3) -> Transform3D:
+	var zone: Transform3D = global_transform.orthonormalized()
+	var height: float = max((zone.inverse() * at).y, 0.0)
+	return Transform3D(zone.basis, zone * Vector3(0.0, height, 0.0))
+
+
+## Returns [code]true[/code] if an object at this global position has gone home.
+func is_home(at: Vector3) -> bool:
+	var local: Vector3 = global_transform.orthonormalized().inverse() * at
+	return local.y <= home_height and Vector2(local.x, local.z).length() <= home_radius
 
 
 # Return the node we've captured!
@@ -310,7 +366,7 @@ func _physics_process(delta):
 
 	var state : PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 
-	_detection_shape.radius = radius
+	_detection_shape.radius = max(radius, axis_length)
 	_detection_query.collision_mask = detection_mask
 	_detection_query.exclude = _detection_exclude
 	_detection_query.transform = global_transform
@@ -405,7 +461,8 @@ func _physics_process(delta):
 
 		return
 
-	capture_node(closest_body, offset_transform.inverse().orthonormalized())
+	if auto_capture:
+		capture_node(closest_body, offset_transform.inverse().orthonormalized())
 
 
 func _process(_delta):
