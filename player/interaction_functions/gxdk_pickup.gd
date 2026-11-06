@@ -40,6 +40,9 @@ signal picked_up(by : GXDKPickup, what : PhysicsBody3D)
 
 ## Inform that this hand has dropped this object (also if this object is still held by the other hand).
 signal dropped(by : GXDKPickup, what : PhysicsBody3D)
+
+## Inform what we would have picked up (null if nothing). Only emitted with [member observe_only] on.
+signal observed_grab(by : GXDKPickup, what : PhysicsBody3D)
 #endregion
 
 enum PickedUpByMode {
@@ -91,6 +94,14 @@ static var _highlighted_bodies: Dictionary[Node3D, HighlightedBody]
 
 		if _editor_mesh_instance:
 			_editor_mesh_instance.position = detection_offset
+
+## If true we report what we would pick up through [signal observed_grab],
+## but we don't pick up or highlight anything.
+@export var observe_only: bool = false:
+	set(value):
+		observe_only = value
+		if observe_only and _closest_object and is_instance_valid(_closest_object.body):
+			_remove_highlight(_closest_object.body)
 
 ## The action we check when grabbing things
 @export var grab_action: String = "grip"
@@ -235,6 +246,13 @@ func get_picked_up_grab_point() -> GXDKGrabPoint:
 ## Returns true if we're the primary hand holding this object
 func is_primary() -> bool:
 	return _is_primary
+
+
+## Returns the object we would pick up right now
+func get_closest_body() -> PhysicsBody3D:
+	if _closest_object and is_instance_valid(_closest_object.body):
+		return _closest_object.body
+	return null
 
 
 ## Return the grab offset for this pickup object
@@ -623,6 +641,8 @@ func _process(_delta):
 			return
 
 		drop_held_object(linear_velocity, angular_velocity)
+	elif not was_grab and _is_grab and observe_only:
+		observed_grab.emit(self, get_closest_body())
 	elif not was_grab and _is_grab and _closest_object and is_instance_valid(_closest_object.body):
 		pickup_object(_closest_object)
 		return
@@ -630,6 +650,10 @@ func _process(_delta):
 	# Update closest object
 	var was_closest_object : GrabObject = _closest_object
 	_closest_object = _get_closest()
+
+	if observe_only:
+		# We only report, so no highlights.
+		return
 
 	if was_closest_object and _closest_object and was_closest_object.body == _closest_object.body:
 		# We're done
