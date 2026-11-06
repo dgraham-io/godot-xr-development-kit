@@ -661,6 +661,7 @@ func _process(_delta):
 
 	if _picked_up:
 		if _is_grab:
+			_update_custom_process(_delta)
 			return
 
 		drop_held_object(linear_velocity, angular_velocity)
@@ -709,6 +710,10 @@ func _physics_process(delta):
 	if not _picked_up:
 		return
 
+	# This object follows our hand from our process function
+	if _picked_up.has_method("_xr_custom_pickup_process"):
+		return
+
 	var controller_target: Transform3D = get_controller_target()
 	if controller_target == Transform3D():
 		return
@@ -735,7 +740,7 @@ func _process_locomotion(delta: float) -> void:
 	elif not _xr_player_object:
 		# No player object to run our logic on, no need to run this.
 		return
-	elif _picked_up.has_method("_xr_custom_pickup_handler"):
+	elif _picked_up.has_method("_xr_custom_pickup_handler") or _picked_up.has_method("_xr_custom_pickup_process"):
 		# Has a custom handler, no need to run this.
 		return
 	elif not _grab_as_static_body:
@@ -751,6 +756,19 @@ func _process_locomotion(delta: float) -> void:
 
 
 #region Private functions
+# Lets an object follow our hand at display rate, which needn't match our physics rate.
+# Same arguments as _xr_custom_pickup_handler.
+func _update_custom_process(delta: float) -> void:
+	if not is_instance_valid(_picked_up) or not _picked_up.has_method("_xr_custom_pickup_process"):
+		return
+
+	var controller_target: Transform3D = get_controller_target()
+	if controller_target == Transform3D():
+		return
+
+	_picked_up._xr_custom_pickup_process(self, delta, controller_target, controller_target * _grab_offset.inverse())
+
+
 # Returns true if our pickup feature is attached to the left hand.
 func _is_left_hand() -> bool:
 	if _xr_collision_hand:
