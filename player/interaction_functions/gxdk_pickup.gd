@@ -52,7 +52,10 @@ enum DropReason {
 	RELEASED,
 
 	## We lost tracking, the user made no decision
-	TRACKING_LOST
+	TRACKING_LOST,
+
+	## We're leaving the scene tree, the user made no decision
+	EXITING
 }
 
 enum PickedUpByMode {
@@ -656,7 +659,7 @@ func _exit_tree():
 		if _closest_object and is_instance_valid(_closest_object.body):
 			_remove_highlight(_closest_object.body)
 
-		drop_held_object()
+		drop_held_object(Vector3(), Vector3(), DropReason.EXITING)
 
 		# Remove us from the pickup handlers
 		if _pickup_handlers.has(self):
