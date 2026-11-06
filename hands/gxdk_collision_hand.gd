@@ -408,6 +408,11 @@ func get_pose_transform(pose_action : String) -> Transform3D:
 	return Transform3D()
 
 
+## Returns the hand mesh scene we show, if any.
+func get_hand_mesh() -> Node3D:
+	return _hand_mesh
+
+
 ## Returns the controller tracker for this hand, if any.
 func get_controller_tracker() -> XRControllerTracker:
 	return _controller_tracker
