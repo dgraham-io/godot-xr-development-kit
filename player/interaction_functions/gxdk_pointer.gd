@@ -232,13 +232,17 @@ func _is_action_pressed() -> bool:
 		input = _xr_controller.get_input(press_action)
 
 	var pressed: bool = false
+	var value: float = 0.0
 	if typeof(input) == TYPE_BOOL:
 		pressed = input
+		value = 1.0 if pressed else 0.0
 	elif typeof(input) == TYPE_FLOAT:
+		value = input
 		var threshold: float = release_threshold if _action_pressed else press_threshold
 		pressed = input > threshold
 
-	if not pressed:
+	# An input we don't have, or one read with no tracking, says nothing about our hand.
+	if input != null and value <= release_threshold and (_has_aim_pose or not use_aim_pose):
 		_has_opened = true
 
 	return pressed and (_has_opened or not require_open_first)
