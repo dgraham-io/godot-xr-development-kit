@@ -803,7 +803,10 @@ func _update_display_rate_hand(delta: float) -> void:
 	# Our body reaches a target in the physics step after it's set,
 	# so either of our last two targets is where it should be.
 	var wanted : Transform3D
-	var distance : float = min(global_position.distance_to(_physics_target.origin), global_position.distance_to(_previous_physics_target.origin))
+	var distance : float = min(
+		global_position.distance_to(_physics_target.origin),
+		global_position.distance_to(_previous_physics_target.origin)
+	)
 	if distance > free_distance:
 		wanted = global_transform * _physics_target.affine_inverse()
 
