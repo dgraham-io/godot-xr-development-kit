@@ -192,6 +192,19 @@ const ORIENT_DISPLACEMENT := 0.05
 		if _hand_mesh:
 			_hand_mesh.visible = show_hand_mesh
 
+## If [code]true[/code], our hand mesh follows the tracked hand at display rate
+## while it moves freely, instead of stepping with our physics, and only stays
+## with our collision hand when that's really being held back.
+@export var follow_at_display_rate : bool = false:
+	set(value):
+		follow_at_display_rate = value
+		if _hand_mesh and not follow_at_display_rate:
+			_hand_mesh.transform = Transform3D()
+
+## A hand within this distance of its target counts as moving freely,
+## with [member follow_at_display_rate] on.
+@export var free_distance : float = 0.003
+
 ## If [code]true[/code], we show a ghost hand if hand placement doesn't match.
 @export var enable_ghost_hand : bool = true
 
@@ -251,11 +264,18 @@ var _target_override: Node3D
 # Current target offset
 var _target_offset: Transform3D
 
+# Where our last two physics steps wanted us to be
+var _physics_target: Transform3D
+var _previous_physics_target: Transform3D
+
 # Hand meshes
 var _hand_mesh: Node3D
 var _ghost_mesh: Node3D
 var _missing_bones: PackedStringArray
 var _tween: Tween
+
+# Held back from our tracked position, with follow_at_display_rate on
+var _held_back: Transform3D
 
 # Skeleton collisions
 var _hand_tracking_parent: XRNode3D
@@ -662,6 +682,9 @@ func _physics_process(delta):
 		freeze = true
 		return
 
+	_previous_physics_target = _physics_target
+	_physics_target = target
+
 	# Always place our ghost mesh at our tracked location.
 	if _ghost_mesh:
 		_ghost_mesh.global_transform = target
@@ -736,9 +759,12 @@ func _physics_process(delta):
 	_was_parent_basis = parent_transform.basis
 
 
-func _process(_delta):
+func _process(delta):
 	if Engine.is_editor_hint():
 		return
+
+	if follow_at_display_rate:
+		_update_display_rate_hand(delta)
 
 	# Our hand should now be positioned so we can do our ghost logic.
 	if _ghost_mesh:
@@ -757,6 +783,32 @@ func _process(_delta):
 		_ghost_mesh.scale = Vector3(world_scale, world_scale, world_scale)
 	if _hand_mesh.visible:
 		_hand_mesh.scale = Vector3(world_scale, world_scale, world_scale)
+#endregion
+
+
+#region Private Display Rate Functions
+# Place our hand mesh on the tracked hand, unless we're really held back.
+func _update_display_rate_hand(delta: float) -> void:
+	# An override holds our hand on an object, and may be tweening it there.
+	if _target_override or not _hand_mesh:
+		return
+
+	var tracked : Transform3D = get_tracked_transform()
+	if tracked == Transform3D():
+		return
+
+	if _ghost_mesh:
+		_ghost_mesh.global_transform = tracked
+
+	# Our body reaches a target in the physics step after it's set,
+	# so either of our last two targets is where it should be.
+	var wanted : Transform3D
+	var distance : float = min(global_position.distance_to(_physics_target.origin), global_position.distance_to(_previous_physics_target.origin))
+	if distance > free_distance:
+		wanted = global_transform * _physics_target.affine_inverse()
+
+	_held_back = _held_back.interpolate_with(wanted, 1.0 - exp(-delta * 45.0))
+	_hand_mesh.global_transform = _held_back * tracked
 #endregion
 
 
