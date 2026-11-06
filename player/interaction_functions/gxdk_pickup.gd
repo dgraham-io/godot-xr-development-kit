@@ -45,6 +45,15 @@ signal dropped(by : GXDKPickup, what : PhysicsBody3D)
 signal observed_grab(by : GXDKPickup, what : PhysicsBody3D)
 #endregion
 
+## Why we last let go of an object
+enum DropReason {
+	## We let go, or some code made us
+	RELEASED,
+
+	## We lost tracking, the user made no decision
+	TRACKING_LOST
+}
+
 enum PickedUpByMode {
 	ANY,
 	PRIMARY,
@@ -144,6 +153,15 @@ static var _highlighted_bodies: Dictionary[Node3D, HighlightedBody]
 ## the hand has to open first (for instance when a scene is reloaded).
 @export var require_open_first: bool = false
 
+## If not 0.0 we handle losing tracking of our hand while holding an object:
+## An unreliable frame while still grabbing just carries on.
+## Lost tracking, or opening our hand on an unreliable frame, doesn't let go:
+## the object stays where it is and we continue from there, with no jump, if
+## tracking returns within this time. Otherwise we let go with
+## [enum DropReason] TRACKING_LOST.
+## With 0.0 we hold on while tracking is lost, for as long as it takes.
+@export_range(0.0, 5.0, 0.01) var loss_release_time: float = 0.0
+
 ## When the second hand lets go of an object, how long do we delay our "snap"
 @export_range(0.0, 2.0, 0.01) var two_hand_delay = 0.5
 
@@ -178,6 +196,12 @@ var _was_xr_pressed: bool = false
 
 # How long we've been in grab mode, INF if this grab can't take anything anymore
 var _grab_age: float = 0.0
+
+# How long tracking has been lost or unreliable while holding an object
+var _lost_time: float = 0.0
+
+# Why we last let go
+var _drop_reason: DropReason = DropReason.RELEASED
 
 # True once our hand has been open since we started
 var _has_opened: bool = false
@@ -296,6 +320,11 @@ func get_closest_body() -> PhysicsBody3D:
 	if _closest_object and is_instance_valid(_closest_object.body):
 		return _closest_object.body
 	return null
+
+
+## Returns why we last let go of an object
+func get_drop_reason() -> DropReason:
+	return _drop_reason
 
 
 ## Return the grab offset for this pickup object
@@ -441,7 +470,8 @@ func pickup_object(object : GrabObject):
 
 ## Drop object we're currently holding
 func drop_held_object( \
-	apply_linear_velocity : Vector3 = Vector3(), apply_angular_velocity : Vector3 = Vector3() \
+	apply_linear_velocity : Vector3 = Vector3(), apply_angular_velocity : Vector3 = Vector3(), \
+	reason : DropReason = DropReason.RELEASED \
 	) -> void:
 	if not is_instance_valid(_picked_up):
 		# Just in case
@@ -455,6 +485,8 @@ func drop_held_object( \
 
 	# Whatever made us let go, this grab can't take anything else.
 	_grab_age = INF
+	_lost_time = 0.0
+	_drop_reason = reason
 
 	# Process letting go
 	if _xr_collision_hand:
@@ -648,6 +680,10 @@ func _process(delta):
 	if not _xr_controller and not _xr_collision_hand:
 		return
 
+	# Handle tracking loss while holding an object
+	if _is_handling_tracking_loss(delta):
+		return
+
 	# if we're not tracking, do nothing
 	if not _have_tracking_data():
 		# We do not drop what we hold (right away)
@@ -747,6 +783,10 @@ func _physics_process(delta):
 	if _picked_up.has_method("_xr_custom_pickup_process"):
 		return
 
+	# Tracking is lost or unreliable, the object stays where it is
+	if _lost_time > 0.0:
+		return
+
 	var controller_target: Transform3D = get_controller_target()
 	if controller_target == Transform3D():
 		return
@@ -789,6 +829,39 @@ func _process_locomotion(delta: float) -> void:
 
 
 #region Private functions
+# Returns true if tracking loss has taken over this frame
+func _is_handling_tracking_loss(delta: float) -> bool:
+	if loss_release_time <= 0.0 or not is_instance_valid(_picked_up):
+		return false
+
+	var tracked: bool = _have_tracking_data()
+	var still_grabbing: bool = _get_grab_value() > release_threshold
+	if tracked and (_is_pinch_tracked() or still_grabbing):
+		if _lost_time > 0.0:
+			_recover_from_tracking_loss()
+		return false
+
+	_lost_time += delta
+	if _lost_time >= loss_release_time:
+		drop_held_object(Vector3(), Vector3(), DropReason.TRACKING_LOST)
+
+	return true
+
+
+# Tracking is back, continue from where the object is now, with no jump
+func _recover_from_tracking_loss() -> void:
+	_lost_time = 0.0
+
+	var target: Transform3D = get_controller_target()
+	if target == Transform3D():
+		return
+
+	_grab_offset = _picked_up.global_transform.inverse() * target
+	_picked_up_to_org_target = _grab_offset
+	if _xr_collision_hand:
+		_xr_collision_hand.add_target_override(_picked_up, 1, _grab_offset)
+
+
 # Returns true if our current grab can take our closest object
 func _can_take_closest() -> bool:
 	if not _is_grab or _grab_age > grab_window:
