@@ -19,7 +19,7 @@ Alternatively, you can download the demo from the releases page either as a full
 godot --headless --import
 godot --headless --xr-mode off --script res://tests/run_tests.gd
 ```
-The exit code is 0 when every check passes.
+It prints `PASS` or `FAIL`, and exits with 0 on a pass. Godot also exits with 0 if a test script fails to load, so read the output.
 
 ## Spectator view
 
