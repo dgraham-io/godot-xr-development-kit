@@ -3,6 +3,13 @@ extends "res://tests/test_base.gd"
 
 func tests() -> Array[Callable]:
 	return [
+		_test_unsure_open_with_curl,
+		_test_pinch_takes_over,
+		_test_secondary_only_hold,
+		_test_no_retake_with_curled_hand,
+		_test_pinch_owns_hold,
+		_test_pinch_on_grip_open_first,
+		_test_pinch_on_grip,
 		_test_open_first_wobble,
 		_test_no_player_body,
 		_test_drop_on_exit,
@@ -94,16 +101,6 @@ func _test_two_grab_actions() -> void:
 	lc.set_input("grip", 1.0)
 	await _frames(2)
 	ok(pickup.has_picked_up(), "the second action grabs")
-	lc.set_input("trigger", 1.0)
-	await _frames(2)
-	lc.set_input("grip", 0.0)
-	await _frames(2)
-	ok(pickup.has_picked_up(), "going from palm to pinch doesn't drop")
-	lc.set_input("grip", 1.0)
-	await _frames(2)
-	lc.set_input("trigger", 0.0)
-	await _frames(2)
-	ok(pickup.has_picked_up(), "nor from pinch to palm")
 	lc.set_input("grip", 0.5)
 	await _frames(2)
 	ok(pickup.has_picked_up(), "holds above the release threshold")
@@ -392,3 +389,160 @@ func _test_open_first_wobble() -> void:
 	lc.set_input("trigger", 1.0)
 	await _frames(5)
 	ok(pickup.has_picked_up(), "at the release threshold it has")
+
+
+func _test_pinch_on_grip() -> void:
+	await _rig()
+	_grab_values()
+	lc.set_input("grip", 1.0)
+	await _frames(2)
+	await get_tree().create_timer(0.3).timeout
+	var c: RigidBody3D = _cart(_beside())
+	await _frames(5)
+	ok(not pickup.has_picked_up(), "a grip held past the window takes nothing")
+	lc.set_input("trigger", 0.6)
+	await _frames(3)
+	ok(not pickup.has_picked_up(), "a pinch below the threshold isn't a press")
+	lc.set_input("trigger", 1.0)
+	await _frames(3)
+	ok(pickup.get_picked_up() == c, "a fresh pinch on a closed grip takes it")
+	lc.set_input("grip", 0.0)
+	await _frames(3)
+	ok(pickup.has_picked_up(), "the grip going while the pinch holds doesn't drop it")
+	lc.set_input("trigger", 0.0)
+	await _frames(3)
+	ok(not pickup.has_picked_up(), "the pinch opening ends the hold")
+	c.queue_free()
+	await _frames(3)
+	lc.set_input("grip", 1.0)
+	await _frames(2)
+	await get_tree().create_timer(0.3).timeout
+	lc.set_input("trigger", 1.0)
+	await _frames(2)
+	lc.set_input("trigger", 0.6)
+	await _frames(2)
+	lc.set_input("trigger", 1.0)
+	await get_tree().create_timer(0.3).timeout
+	_cart(_beside())
+	await _frames(5)
+	ok(not pickup.has_picked_up(), "a wobble isn't a new press, and arriving past the window takes nothing")
+
+
+func _test_pinch_on_grip_open_first() -> void:
+	lc.set_input("grip", 1.0)
+	lc.set_input("trigger", 1.0)
+	await _rig()
+	_grab_values()
+	pickup.require_open_first = true
+	var c: RigidBody3D = _cart(_beside())
+	await _frames(5)
+	lc.set_input("trigger", 0.6)
+	await _frames(2)
+	lc.set_input("trigger", 1.0)
+	await _frames(3)
+	ok(not pickup.has_picked_up(), "held through a start, a wobble in the pinch doesn't take")
+	lc.set_input("trigger", 0.0)
+	await _frames(2)
+	lc.set_input("trigger", 1.0)
+	await _frames(3)
+	ok(pickup.get_picked_up() == c, "a pinch that really opened counts, with the grip still closed")
+
+
+func _test_pinch_owns_hold() -> void:
+	var c: RigidBody3D = await _curled_hand_rig()
+	lc.set_input("trigger", 1.0)
+	lc.set_input("grip", 1.0)
+	await _frames(3)
+	ok(pickup.get_picked_up() == c, "pinch and curl take it")
+	lc.set_input("trigger", 0.07)
+	await _frames(3)
+	ok(not pickup.has_picked_up(), "opening the pinch lets go, with the grip still at 1.0")
+	ok(pickup.get_drop_reason() == GXDKPickup.DropReason.RELEASED, "as a release")
+
+
+func _test_no_retake_with_curled_hand() -> void:
+	var c: RigidBody3D = await _curled_hand_rig()
+	lc.set_input("trigger", 1.0)
+	lc.set_input("grip", 1.0)
+	await _frames(3)
+	lc.set_input("trigger", 0.0)
+	await _frames(10)
+	ok(not pickup.has_picked_up(), "still curled after a release, it stays let go")
+	lc.set_input("trigger", 1.0)
+	await _frames(3)
+	ok(pickup.get_picked_up() == c, "a new pinch takes it again")
+	lc.set_input("trigger", 0.0)
+	await _frames(3)
+	lc.set_input("grip", 0.0)
+	await _frames(3)
+	lc.set_input("grip", 1.0)
+	await _frames(3)
+	ok(pickup.get_picked_up() == c, "and so does the grip opening and rising")
+
+
+func _test_secondary_only_hold() -> void:
+	var c: RigidBody3D = await _curled_hand_rig()
+	lc.set_input("grip", 1.0)
+	await _frames(3)
+	ok(pickup.get_picked_up() == c, "a palm grab takes it")
+	lc.set_input("trigger", 0.6)
+	await _frames(2)
+	ok(pickup.has_picked_up(), "a half pinch changes nothing")
+	lc.set_input("grip", 0.0)
+	await _frames(3)
+	ok(not pickup.has_picked_up(), "the grip opening ends it, with the pinch never closed")
+
+
+func _test_pinch_takes_over() -> void:
+	var c: RigidBody3D = await _curled_hand_rig()
+	lc.set_input("grip", 1.0)
+	await _frames(3)
+	ok(pickup.get_picked_up() == c, "the grip gets there first")
+	lc.set_input("trigger", 1.0)
+	await _frames(3)
+	lc.set_input("grip", 0.0)
+	await _frames(3)
+	ok(pickup.has_picked_up(), "the pinch closing a moment later owns it, the grip going changes nothing")
+	lc.set_input("grip", 1.0)
+	await _frames(2)
+	lc.set_input("trigger", 0.0)
+	await _frames(3)
+	ok(not pickup.has_picked_up(), "and its opening ends it")
+
+
+func _test_unsure_open_with_curl() -> void:
+	var c: RigidBody3D = await _curled_hand_rig()
+	pickup.loss_release_time = 0.4
+	lc.set_input("trigger", 1.0)
+	lc.set_input("grip", 1.0)
+	await _frames(3)
+	ok(pickup.get_picked_up() == c, "taken")
+	_pose(hxf, XRPose.XR_TRACKING_CONFIDENCE_LOW)
+	lc.set_input("trigger", 0.0)
+	await _frames(3)
+	ok(pickup.has_picked_up(), "opening the pinch on an unsure frame isn't a release, curled or not")
+	lc.set_input("trigger", 1.0)
+	_pose(hxf)
+	await _frames(3)
+	ok(pickup.has_picked_up(), "pinching again carries on")
+
+
+func _grab_values() -> void:
+	pickup.secondary_grab_action = "grip"
+	pickup.grab_threshold = 0.75
+	pickup.release_threshold = 0.4
+	pickup.grab_window = 0.2
+	pickup.keep_grip_on_grab = true
+
+
+# David's log: a natural curl reads grip 1.00 with the pinch at 0.00 and 0.07.
+func _curled_hand_rig() -> RigidBody3D:
+	await _rig()
+	pickup.secondary_grab_action = "grip"
+	pickup.grab_threshold = 0.75
+	pickup.release_threshold = 0.4
+	pickup.grab_window = 0.35
+	pickup.keep_grip_on_grab = true
+	var c: RigidBody3D = _cart(_beside(), true)
+	await _frames(5)
+	return c
