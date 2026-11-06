@@ -713,7 +713,7 @@ func _process(delta):
 	var was_grab = _is_grab
 	var xr_grab_float : float = _get_grab_value()
 	var threshold : float = release_threshold if _was_xr_pressed else grab_threshold
-	if xr_grab_float <= threshold:
+	if xr_grab_float <= release_threshold:
 		_has_opened = true
 	var xr_pressed : bool = xr_grab_float > threshold and (_has_opened or not require_open_first)
 	if xr_pressed != _was_xr_pressed:
