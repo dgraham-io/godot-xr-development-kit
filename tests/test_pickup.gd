@@ -4,6 +4,7 @@ extends "res://tests/test_base.gd"
 func tests() -> Array[Callable]:
 	return [
 		_test_no_player_body,
+		_test_drop_on_exit,
 		_test_observe_only,
 		_test_two_grab_actions,
 		_test_palm_side_default,
@@ -355,3 +356,17 @@ func _test_loss_off_by_default() -> void:
 	lc.set_input("trigger", 0.0)
 	await get_tree().create_timer(0.5).timeout
 	ok(pickup.has_picked_up(), "by default a lost hand holds on, as upstream")
+
+
+func _test_drop_on_exit() -> void:
+	await _rig()
+	var c: RigidBody3D = _cart(_beside())
+	var reasons: Array = []
+	pickup.dropped.connect(func(by: GXDKPickup, _what: PhysicsBody3D) -> void: reasons.append(by.get_drop_reason()))
+	await _frames(5)
+	lc.set_input("trigger", 1.0)
+	await _frames(3)
+	ok(pickup.get_picked_up() == c, "taken")
+	hand.remove_child(pickup)
+	ok(reasons == [GXDKPickup.DropReason.EXITING], "leaving the tree isn't a release")
+	pickup.free()
