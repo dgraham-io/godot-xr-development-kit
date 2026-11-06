@@ -106,6 +106,16 @@ static var _highlighted_bodies: Dictionary[Node3D, HighlightedBody]
 ## The action we check when grabbing things
 @export var grab_action: String = "grip"
 
+## An optional second action that also grabs (for hand tracking: pinch and palm grab).
+## We can go from one to the other without dropping what we hold.
+@export var secondary_grab_action: String = ""
+
+## Our grab input must go above this to grab.
+@export_range(0.0, 1.0, 0.01) var grab_threshold: float = 0.8
+
+## Our grab input must go below this to let go.
+@export_range(0.0, 1.0, 0.01) var release_threshold: float = 0.6
+
 ## If false we need to continously hold our grab button, if true we toggle
 ## Note: with keyboard entry toggle is enforced
 @export var grab_toggle: bool = false
@@ -624,7 +634,7 @@ func _process(_delta):
 	# Check our grab status
 	var was_grab = _is_grab
 	var xr_grab_float : float = _get_grab_value()
-	var threshold : float = 0.6 if _was_xr_pressed else 0.8
+	var threshold : float = release_threshold if _was_xr_pressed else grab_threshold
 	var xr_pressed : bool = xr_grab_float > threshold
 	if xr_pressed != _was_xr_pressed:
 		_was_xr_pressed = xr_pressed
@@ -1118,13 +1128,22 @@ func _get_pose() -> XRPose:
 
 # Returns our grab input
 func _get_grab_value() -> float:
+	var value: float = _get_action_value(grab_action)
+	if not secondary_grab_action.is_empty():
+		value = max(value, _get_action_value(secondary_grab_action))
+
+	return value
+
+
+# Returns the value of one action
+func _get_action_value(action: String) -> float:
 	if _xr_collision_hand:
-		var input : Variant = _xr_collision_hand.get_input(grab_action)
+		var input : Variant = _xr_collision_hand.get_input(action)
 		if input:
 			var value : float = input
 			return value
 	elif _xr_controller:
-		return _xr_controller.get_float(grab_action)
+		return _xr_controller.get_float(action)
 
 	return 0.0
 
