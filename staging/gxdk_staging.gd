@@ -42,6 +42,13 @@ signal showing_loaded_scene
 ## If true, the player is prompted to continue
 @export var prompt_for_continue : bool = false
 
+## If true, the player is prompted to continue at the start, and after taking
+## off their headset while we're loading.
+@export var prompt_on_start : bool = true
+
+## How long our fade to black, and our fade back in, each take.
+@export_range(0.0, 5.0, 0.05) var fade_time : float = 1.0
+
 ## The current scene
 var _current_scene : GXDKStageBase
 
@@ -68,6 +75,8 @@ func _ready() -> void:
 	# Do not initialise if in the editor
 	if Engine.is_editor_hint():
 		return
+
+	_must_prompt_for_continue = prompt_on_start
 
 	# We start by loading our main level scene
 	load_scene.call_deferred(main_scene)
@@ -123,7 +132,7 @@ func load_scene(p_scene_path : String, user_data = null) -> void:
 		if _tween:
 			_tween.kill()
 		_tween = create_tween()
-		_tween.tween_method(_set_fade, 0.0, 1.0, 1.0)
+		_tween.tween_method(_set_fade, 0.0, 1.0, fade_time)
 		await _tween.finished
 
 		# Now we remove our scene
@@ -158,7 +167,7 @@ func load_scene(p_scene_path : String, user_data = null) -> void:
 		if _tween:
 			_tween.kill()
 		_tween = create_tween()
-		_tween.tween_method(_set_fade, 1.0, 0.0, 1.0)
+		_tween.tween_method(_set_fade, 1.0, 0.0, fade_time)
 		await _tween.finished
 
 	# If the loading screen is visible then show the progress and optionally
@@ -199,7 +208,7 @@ func load_scene(p_scene_path : String, user_data = null) -> void:
 		if _tween:
 			_tween.kill()
 		_tween = create_tween()
-		_tween.tween_method(_set_fade, 0.0, 1.0, 1.0)
+		_tween.tween_method(_set_fade, 0.0, 1.0, fade_time)
 		await _tween.finished
 
 		# Hide our loading screen
@@ -226,7 +235,7 @@ func load_scene(p_scene_path : String, user_data = null) -> void:
 	if _tween:
 		_tween.kill()
 	_tween = create_tween()
-	_tween.tween_method(_set_fade, 1.0, 0.0, 1.0)
+	_tween.tween_method(_set_fade, 1.0, 0.0, fade_time)
 	await _tween.finished
 
 	# Report new scene visible
@@ -298,4 +307,4 @@ func _on_xr_pose_recenter():
 func _on_xr_ended():
 	# Focus lost
 	if _is_loading:
-		_must_prompt_for_continue = true
+		_must_prompt_for_continue = prompt_on_start
