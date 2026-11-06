@@ -87,6 +87,12 @@ signal released(body)
 ## How far from our Y axis we help an object into line.
 @export var axis_radius: float = 0.07
 
+## How far below our zone we keep helping at full strength...
+@export var axis_below: float = 0.03
+
+## ...and over how much further that help eases out.
+@export var axis_below_fade: float = 0.02
+
 ## Object is home when it's this close above our zone...
 @export var home_height: float = 0.016
 
@@ -163,12 +169,13 @@ func get_axis_assist(at: Vector3) -> float:
 
 	var local: Vector3 = global_transform.orthonormalized().inverse() * at
 	var lateral: float = Vector2(local.x, local.z).length()
-	if local.y > axis_length or local.y < -0.03 or lateral > axis_radius:
+	if local.y > axis_length or lateral > axis_radius:
 		return 0.0
 
 	var along_radius: float = smoothstep(0.0, 1.0, 1.0 - lateral / axis_radius)
 	var along_axis: float = smoothstep(0.0, 1.0, (axis_length - local.y) / (axis_length * 0.4))
-	return along_radius * along_axis
+	var below: float = smoothstep(0.0, 1.0, (local.y + axis_below + axis_below_fade) / axis_below_fade)
+	return along_radius * along_axis * below
 
 
 ## Returns this global transform, eased into line with our axis as far as we help it.
