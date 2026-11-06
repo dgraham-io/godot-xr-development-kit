@@ -192,6 +192,10 @@ func _setup_for_openxr() -> bool:
 	openxr_interface.pose_recentered.connect(_on_openxr_pose_recentered)
 	# TODO: connect to other signals
 
+	# We may be started in a session that's already running (for instance when
+	# a scene is reloaded), in which case these signals won't come again.
+	_sync_with_running_session(openxr_interface)
+
 	# TODO: Re-implement passthrough logic
 
 	# Disable vsync
@@ -208,6 +212,15 @@ func _setup_for_openxr() -> bool:
 
 	# Report success
 	return true
+
+
+# Pick up the state of a session that's already running
+func _sync_with_running_session(openxr_interface : OpenXRInterface) -> void:
+	var state : OpenXRInterface.SessionState = openxr_interface.get_session_state()
+	if state >= OpenXRInterface.SESSION_STATE_READY and state <= OpenXRInterface.SESSION_STATE_FOCUSED:
+		_on_openxr_session_begun()
+	if state == OpenXRInterface.SESSION_STATE_FOCUSED:
+		_on_openxr_focused_state()
 
 
 # Handle OpenXR session ready
