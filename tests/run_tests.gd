@@ -12,6 +12,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/test_hands.gd",
 	"res://tests/test_touch.gd",
 	"res://tests/test_staging.gd",
+	"res://tests/test_seated_stage.gd",
 ]
 
 

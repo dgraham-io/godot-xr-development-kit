@@ -1,0 +1,154 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://stages/seated_stage/seated_stage.gd" id="stage"]
+[ext_resource type="Script" path="res://stages/seated_stage/seated_box.gd" id="box"]
+[ext_resource type="Script" path="res://addons/godot-xr-development-kit/hands/gxdk_collision_hand.gd" id="hand"]
+[ext_resource type="Script" path="res://addons/godot-xr-development-kit/player/interaction_functions/gxdk_pickup.gd" id="pickup"]
+[ext_resource type="Script" path="res://addons/godot-xr-development-kit/player/interaction_functions/gxdk_hand_gestures.gd" id="gestures"]
+[ext_resource type="Script" path="res://addons/godot-xr-development-kit/components/snapping/gxdk_snap_zone.gd" id="zone"]
+
+[sub_resource type="BoxMesh" id="box_mesh"]
+size = Vector3(0.068, 0.06, 0.014)
+
+[sub_resource type="BoxShape3D" id="box_shape"]
+margin = 0.001
+size = Vector3(0.068, 0.06, 0.014)
+
+[sub_resource type="BoxMesh" id="slot_mesh"]
+size = Vector3(0.09, 0.01, 0.03)
+
+[node name="SeatedStage" type="Node3D"]
+script = ExtResource("stage")
+
+[node name="Seat" type="StaticBody3D" parent="."]
+collision_layer = 0
+collision_mask = 0
+
+[node name="XROrigin3D" type="XROrigin3D" parent="Seat"]
+
+[node name="XRCamera3D" type="XRCamera3D" parent="Seat/XROrigin3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+
+[node name="LeftGestures" type="Node3D" parent="Seat/XROrigin3D"]
+script = ExtResource("gestures")
+
+[node name="RightGestures" type="Node3D" parent="Seat/XROrigin3D"]
+script = ExtResource("gestures")
+hand = 1
+
+[node name="LeftCollisionHand" type="RigidBody3D" parent="Seat/XROrigin3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.2, 1, -0.4)
+collision_layer = 0
+collision_mask = 0
+script = ExtResource("hand")
+hand = 0
+mode = 1
+show_hand_mesh = true
+follow_at_display_rate = true
+enable_ghost_hand = false
+
+[node name="Pickup" type="Node3D" parent="Seat/XROrigin3D/LeftCollisionHand"]
+script = ExtResource("pickup")
+collision_mask = 2
+detection_radius = 0.045
+detection_offset = Vector3(0, 0, 0)
+detect_from_pinch_point = true
+require_palm_facing = false
+keep_grip_on_grab = true
+grab_action = "trigger"
+secondary_grab_action = "grip"
+grab_threshold = 0.75
+release_threshold = 0.4
+grab_window = 0.35
+unsure_wait = 0.1
+require_open_first = true
+loss_release_time = 0.4
+
+[node name="RightCollisionHand" type="RigidBody3D" parent="Seat/XROrigin3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.2, 1, -0.4)
+collision_layer = 0
+collision_mask = 0
+script = ExtResource("hand")
+hand = 1
+mode = 1
+show_hand_mesh = true
+follow_at_display_rate = true
+enable_ghost_hand = false
+
+[node name="Pickup" type="Node3D" parent="Seat/XROrigin3D/RightCollisionHand"]
+script = ExtResource("pickup")
+collision_mask = 2
+detection_radius = 0.045
+detection_offset = Vector3(0, 0, 0)
+detect_from_pinch_point = true
+require_palm_facing = false
+keep_grip_on_grab = true
+grab_action = "trigger"
+secondary_grab_action = "grip"
+grab_threshold = 0.75
+release_threshold = 0.4
+grab_window = 0.35
+unsure_wait = 0.1
+require_open_first = true
+loss_release_time = 0.4
+
+[node name="BoxA" type="RigidBody3D" parent="." node_paths=PackedStringArray("slot")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.12, 1, -0.45)
+collision_layer = 2
+collision_mask = 0
+freeze = true
+script = ExtResource("box")
+slot = NodePath("../Slot")
+
+[node name="Mesh" type="MeshInstance3D" parent="BoxA"]
+mesh = SubResource("box_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="BoxA"]
+shape = SubResource("box_shape")
+
+[node name="BoxB" type="RigidBody3D" parent="." node_paths=PackedStringArray("slot")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 1, -0.45)
+collision_layer = 2
+collision_mask = 0
+freeze = true
+script = ExtResource("box")
+slot = NodePath("../Slot")
+
+[node name="Mesh" type="MeshInstance3D" parent="BoxB"]
+mesh = SubResource("box_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="BoxB"]
+shape = SubResource("box_shape")
+
+[node name="BoxC" type="RigidBody3D" parent="." node_paths=PackedStringArray("slot")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.12, 1, -0.45)
+collision_layer = 2
+collision_mask = 0
+freeze = true
+script = ExtResource("box")
+slot = NodePath("../Slot")
+
+[node name="Mesh" type="MeshInstance3D" parent="BoxC"]
+mesh = SubResource("box_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="BoxC"]
+shape = SubResource("box_shape")
+
+[node name="Slot" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, -0.4)
+script = ExtResource("zone")
+auto_capture = false
+axis_length = 0.12
+
+[node name="SlotMesh" type="MeshInstance3D" parent="Slot"]
+mesh = SubResource("slot_mesh")
+
+[node name="Label" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, -0.6)
+pixel_size = 0.001
+text = "Pinch a box, and push it into the slot"
+
+[node name="Light" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.7, 0.7, 0, -0.7, 0.7, 0, 2, 0)
+
+[connection signal="menu_pressed" from="Seat/XROrigin3D/LeftGestures" to="." method="_on_left_gestures_menu_pressed"]
