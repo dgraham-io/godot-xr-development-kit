@@ -108,6 +108,7 @@ func _update_on_hand_tracker(skeleton: Skeleton3D, hand_tracker: XRHandTracker) 
 		var flags = hand_tracker.get_hand_joint_flags(joint)
 		if flags == 0:
 			# No tracking data for this joint.
+			joint += 1
 			continue
 
 		var bone_name = bone_prefix + bone_suffix
