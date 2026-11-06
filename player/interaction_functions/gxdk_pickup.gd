@@ -131,6 +131,19 @@ static var _highlighted_bodies: Dictionary[Node3D, HighlightedBody]
 ## Note: with keyboard entry toggle is enforced
 @export var grab_toggle: bool = false
 
+## A grab closed up to this long before reaching an object still takes it.
+## With 0.0 the object must be in reach on the frame we grab.
+@export_range(0.0, 2.0, 0.01) var grab_window: float = 0.0
+
+## If our thumb and index finger aren't reliably tracked, we wait this long
+## into the grab for a reliable frame before taking the object anyway.
+## With 0.0 we don't check. Keep this below [member grab_window].
+@export_range(0.0, 2.0, 0.01) var unsure_wait: float = 0.0
+
+## If true a grab already held when this node starts doesn't count:
+## the hand has to open first (for instance when a scene is reloaded).
+@export var require_open_first: bool = false
+
 ## When the second hand lets go of an object, how long do we delay our "snap"
 @export_range(0.0, 2.0, 0.01) var two_hand_delay = 0.5
 
@@ -162,6 +175,15 @@ var _is_grab: bool = false
 
 # Remember if our XR action was pressed last frame
 var _was_xr_pressed: bool = false
+
+# How long we've been in grab mode, INF if this grab can't take anything anymore
+var _grab_age: float = 0.0
+
+# True once our hand has been open since we started
+var _has_opened: bool = false
+
+# True if we've reported this grab in observe only mode
+var _grab_observed: bool = false
 
 # True if we're updating our transform
 var _updating_transform: bool = false
@@ -431,6 +453,9 @@ func drop_held_object( \
 
 	var was_picked_up = _picked_up
 
+	# Whatever made us let go, this grab can't take anything else.
+	_grab_age = INF
+
 	# Process letting go
 	if _xr_collision_hand:
 		GXDK.remove_collision_exception(_xr_collision_hand, _picked_up)
@@ -614,7 +639,7 @@ func _exit_tree():
 
 
 # Runs every frame
-func _process(_delta):
+func _process(delta):
 	# Don't run in editor
 	if Engine.is_editor_hint():
 		return
@@ -648,7 +673,9 @@ func _process(_delta):
 	var was_grab = _is_grab
 	var xr_grab_float : float = _get_grab_value()
 	var threshold : float = release_threshold if _was_xr_pressed else grab_threshold
-	var xr_pressed : bool = xr_grab_float > threshold
+	if xr_grab_float <= threshold:
+		_has_opened = true
+	var xr_pressed : bool = xr_grab_float > threshold and (_has_opened or not require_open_first)
 	if xr_pressed != _was_xr_pressed:
 		_was_xr_pressed = xr_pressed
 		if grab_toggle:
@@ -659,14 +686,21 @@ func _process(_delta):
 		# Toggle
 		_is_grab = not _is_grab
 
+	if _is_grab and not was_grab:
+		_grab_age = 0.0
+		_grab_observed = false
+	elif _is_grab:
+		_grab_age += delta
+
 	if _picked_up:
 		if _is_grab:
+			_update_custom_process(delta)
 			return
 
 		drop_held_object(linear_velocity, angular_velocity)
-	elif not was_grab and _is_grab and observe_only:
-		observed_grab.emit(self, get_closest_body())
-	elif not was_grab and _is_grab and _closest_object and is_instance_valid(_closest_object.body):
+	elif observe_only:
+		_observe_grab()
+	elif _can_take_closest():
 		pickup_object(_closest_object)
 		return
 
@@ -709,6 +743,10 @@ func _physics_process(delta):
 	if not _picked_up:
 		return
 
+	# This object follows our hand from our process function
+	if _picked_up.has_method("_xr_custom_pickup_process"):
+		return
+
 	var controller_target: Transform3D = get_controller_target()
 	if controller_target == Transform3D():
 		return
@@ -735,7 +773,7 @@ func _process_locomotion(delta: float) -> void:
 	elif not _xr_player_object:
 		# No player object to run our logic on, no need to run this.
 		return
-	elif _picked_up.has_method("_xr_custom_pickup_handler"):
+	elif _picked_up.has_method("_xr_custom_pickup_handler") or _picked_up.has_method("_xr_custom_pickup_process"):
 		# Has a custom handler, no need to run this.
 		return
 	elif not _grab_as_static_body:
@@ -751,6 +789,59 @@ func _process_locomotion(delta: float) -> void:
 
 
 #region Private functions
+# Returns true if our current grab can take our closest object
+func _can_take_closest() -> bool:
+	if not _is_grab or _grab_age > grab_window:
+		return false
+
+	if not _closest_object or not is_instance_valid(_closest_object.body):
+		return false
+
+	return unsure_wait <= 0.0 or _is_pinch_tracked() or _grab_age >= unsure_wait
+
+
+# Report what we would have picked up, once per grab
+func _observe_grab() -> void:
+	if not _is_grab or _grab_observed:
+		return
+
+	if _can_take_closest():
+		_grab_observed = true
+		observed_grab.emit(self, _closest_object.body)
+	elif _grab_age >= grab_window:
+		_grab_observed = true
+		observed_grab.emit(self, null)
+
+
+# Returns true if our thumb and index finger are reliably tracked this frame
+func _is_pinch_tracked() -> bool:
+	if not _xr_collision_hand:
+		return true
+
+	var hand_tracker: XRHandTracker = _xr_collision_hand.get_hand_tracker()
+	if not hand_tracker:
+		return true
+
+	var tracked: int = XRHandTracker.HAND_JOINT_FLAG_POSITION_TRACKED
+	if not hand_tracker.get_hand_joint_flags(XRHandTracker.HAND_JOINT_THUMB_TIP) & tracked:
+		return false
+
+	return hand_tracker.get_hand_joint_flags(XRHandTracker.HAND_JOINT_INDEX_FINGER_TIP) & tracked != 0
+
+
+# Lets an object follow our hand at display rate, which needn't match our physics rate.
+# Same arguments as _xr_custom_pickup_handler.
+func _update_custom_process(delta: float) -> void:
+	if not is_instance_valid(_picked_up) or not _picked_up.has_method("_xr_custom_pickup_process"):
+		return
+
+	var controller_target: Transform3D = get_controller_target()
+	if controller_target == Transform3D():
+		return
+
+	_picked_up._xr_custom_pickup_process(self, delta, controller_target, controller_target * _grab_offset.inverse())
+
+
 # Returns true if our pickup feature is attached to the left hand.
 func _is_left_hand() -> bool:
 	if _xr_collision_hand:
