@@ -103,6 +103,17 @@ static var _highlighted_bodies: Dictionary[Node3D, HighlightedBody]
 		if observe_only and _closest_object and is_instance_valid(_closest_object.body):
 			_remove_highlight(_closest_object.body)
 
+## If true and we have hand tracking data, we detect from the point between
+## our thumb and index finger tips instead of [member detection_offset].
+@export var detect_from_pinch_point: bool = false
+
+## If true we can only pick up things on the palm side of our hand.
+@export var require_palm_facing: bool = true
+
+## If true an object stays exactly where it is, relative to our hand, when we
+## pick it up, instead of being pulled onto our palm or grab point.
+@export var keep_grip_on_grab: bool = false
+
 ## The action we check when grabbing things
 @export var grab_action: String = "grip"
 
@@ -377,6 +388,8 @@ func pickup_object(object : GrabObject):
 	var target_offset: Transform3D = global_transform.inverse() * target
 
 	_grab_offset = local_grab_transform * target_offset
+	if keep_grip_on_grab:
+		_grab_offset = _picked_up_to_org_target
 
 	if _xr_collision_hand:
 		# Apply target override
@@ -796,6 +809,19 @@ func _get_hand_transform_from_surface(point: Vector3, normal: Vector3) -> Transf
 	return t
 
 
+# Get the transform we detect objects from
+func _get_detection_transform() -> Transform3D:
+	if detect_from_pinch_point and _xr_collision_hand:
+		var hand_tracker: XRHandTracker = _xr_collision_hand.get_hand_tracker()
+		if hand_tracker:
+			var thumb: Vector3 = hand_tracker.get_hand_joint_transform(XRHandTracker.HAND_JOINT_THUMB_TIP).origin
+			var index: Vector3 = hand_tracker.get_hand_joint_transform(XRHandTracker.HAND_JOINT_INDEX_FINGER_TIP).origin
+			var parent: Node3D = _xr_collision_hand.get_parent()
+			return Transform3D(global_basis, parent.global_transform * ((thumb + index) * 0.5))
+
+	return global_transform * Transform3D(Basis(), detection_offset)
+
+
 # Get our closest grabable object
 func _get_closest() -> GrabObject:
 	if not enabled:
@@ -812,15 +838,16 @@ func _get_closest() -> GrabObject:
 	_detection_shape.radius = detection_radius
 	_detection_query.collision_mask = collision_mask
 	_detection_query.exclude = _detection_exclude
-	_detection_query.transform = global_transform * Transform3D(Basis(), detection_offset)
+	_detection_query.transform = _get_detection_transform()
 	
 	var result: Dictionary = state.get_rest_info(_detection_query)
 	if not result or result.is_empty():
 		return null
 
-	var hand_normal = -global_basis.x if _is_left_hand() else global_basis.x
-	if hand_normal.dot(result.normal) < 0.0:
-		return null
+	if require_palm_facing:
+		var hand_normal = -global_basis.x if _is_left_hand() else global_basis.x
+		if hand_normal.dot(result.normal) < 0.0:
+			return null
 
 	var collider: Node3D = instance_from_id(result.collider_id)
 	if not collider or not collider is PhysicsBody3D:
