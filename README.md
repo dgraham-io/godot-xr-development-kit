@@ -12,6 +12,15 @@ git clone -b demo --recurse-submodules https://github.com/GodotVR/godot-xr-devel
 
 Alternatively, you can download the demo from the releases page either as a fully running application for various platforms, or download `godot-xr-development-kit-demo.zip` for a fully setup Godot project. 
 
+## Tests
+
+`tests/` holds headless tests of the plugin, driven by fake XR trackers, so they need no headset:
+```
+godot --headless --import
+godot --headless --xr-mode off --script res://tests/run_tests.gd
+```
+The exit code is 0 when every check passes.
+
 ## Spectator view
 
 This demo includes a spectator view solution.
