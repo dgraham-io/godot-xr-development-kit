@@ -3,6 +3,11 @@ extends "res://tests/test_base.gd"
 
 func tests() -> Array[Callable]:
 	return [
+		_test_open_first_not_while_lost,
+		_test_pointer_open_first_wobble,
+		_test_pointer_disabled,
+		_test_pointer_no_arrival_press,
+		_test_pointer_action_state,
 		_test_pointer_defaults,
 		_test_pointer_aim,
 		_test_pointer_smoothing,
@@ -118,5 +123,132 @@ func _test_pointer_open_first() -> void:
 	lc.set_input("trigger", 1.0)
 	await _frames(2)
 	ok(ptr.is_pressed(), "once open, a press counts")
+	lc.set_input("trigger", 0.0)
+	lc.invalidate_pose("aim")
+
+
+func _test_pointer_action_state() -> void:
+	await _rig()
+	var ptr: GXDKPointer = _pointer(true)
+	ptr.show_laser = false
+	ptr.collision_mask = 0
+	ptr.aim_smoothing = 1.2
+	var xf: Transform3D = Transform3D(Basis(), Vector3(0.0, 1.0, 0.0))
+	_aim_pose(xf)
+	await _frames(3)
+	ok(ptr.has_aim_pose(), "aim is readable with no laser and no collision mask")
+	ok(ptr.global_position.distance_to(xf.origin) < 0.0001, "at the aim pose")
+	lc.set_input("trigger", 1.0)
+	await _frames(2)
+	ok(ptr.is_action_pressed(), "the action reads pressed with nothing targeted")
+	ok(not ptr.is_pressed(), "while nothing is being pressed")
+	lc.set_input("trigger", 0.5)
+	await _frames(2)
+	ok(ptr.is_action_pressed(), "it holds above release, with no target")
+	lc.set_input("trigger", 0.0)
+	await _frames(2)
+	ok(not ptr.is_action_pressed(), "and lets go")
+	lc.invalidate_pose("aim")
+	await _frames(2)
+	ok(not ptr.has_aim_pose(), "lost, it says so")
+
+
+func _test_pointer_no_arrival_press() -> void:
+	await _rig()
+	var ptr: GXDKPointer = _pointer(true)
+	_target(Vector3(0.5, 1.0, -1.0))
+	var away: Transform3D = Transform3D(Basis(), Vector3(0.0, 1.0, 0.0))
+	var at: Transform3D = Transform3D(Basis.looking_at(Vector3(0.5, 0.0, -1.0).normalized(), Vector3.UP), Vector3(0.0, 1.0, 0.0))
+	_aim_pose(away)
+	await _frames(2)
+	lc.set_input("trigger", 1.0)
+	await _frames(2)
+	_aim_pose(at)
+	await _frames(2)
+	ok(ptr.is_pressed(), "by default a press held onto an object presses it, as upstream")
+	lc.set_input("trigger", 0.0)
+	await _frames(2)
+	ptr.press_on_arrival = false
+	_aim_pose(away)
+	await _frames(2)
+	lc.set_input("trigger", 1.0)
+	await _frames(2)
+	_aim_pose(at)
+	await _frames(2)
+	ok(not ptr.is_pressed(), "with it off, it doesn't")
+	lc.set_input("trigger", 0.0)
+	await _frames(2)
+	lc.set_input("trigger", 1.0)
+	await _frames(2)
+	ok(ptr.is_pressed(), "but a press started there does")
+	lc.invalidate_pose("aim")
+
+
+func _test_pointer_disabled() -> void:
+	await _rig()
+	var ptr: GXDKPointer = _pointer(true)
+	ptr.aim_smoothing = 1.2
+	_aim_pose(Transform3D(Basis(), Vector3(0.0, 1.0, 0.0)))
+	lc.set_input("trigger", 1.0)
+	await _frames(3)
+	ok(ptr.is_action_pressed(), "pressed")
+	ptr.enabled = false
+	ok(not ptr.is_action_pressed(), "disabled, it isn't")
+	_aim_pose(Transform3D(Basis(), Vector3(1.0, 1.0, 0.0)))
+	await _frames(2)
+	ptr.enabled = true
+	await _frames(2)
+	ok(ptr.global_position.distance_to(Vector3(1.0, 1.0, 0.0)) < 0.0001, "back, it starts at the hand with no ease from where it was")
+	lc.set_input("trigger", 0.0)
+	lc.invalidate_pose("aim")
+
+
+func _test_pointer_open_first_wobble() -> void:
+	lc.set_input("trigger", 1.0)
+	await _rig()
+	var ptr: GXDKPointer = _pointer(true)
+	ptr.require_open_first = true
+	ptr.press_threshold = 0.75
+	ptr.release_threshold = 0.4
+	_aim_pose(Transform3D(Basis(), Vector3(0.0, 1.0, 0.0)))
+	await _frames(3)
+	lc.set_input("trigger", 0.6)
+	await _frames(3)
+	lc.set_input("trigger", 1.0)
+	await _frames(3)
+	ok(not ptr.is_action_pressed(), "a pointer's closed pinch wobbling to 0.6 hasn't opened")
+	lc.set_input("trigger", 0.4)
+	await _frames(3)
+	lc.set_input("trigger", 1.0)
+	await _frames(3)
+	ok(ptr.is_action_pressed(), "at the release threshold it has")
+	lc.set_input("trigger", 0.0)
+	lc.invalidate_pose("aim")
+
+
+func _test_open_first_not_while_lost() -> void:
+	lc.set_input("trigger", 1.0)
+	await _rig()
+	pickup.require_open_first = true
+	pickup.release_threshold = 0.4
+	pickup.grab_threshold = 0.75
+	pickup.grab_window = 0.35
+	var ptr: GXDKPointer = _pointer(true)
+	ptr.require_open_first = true
+	ptr.press_threshold = 0.75
+	ptr.release_threshold = 0.4
+	_aim_pose(Transform3D(Basis(), Vector3(0.0, 1.0, 0.0)))
+	_cart(_beside())
+	await _frames(3)
+	_lost()
+	lc.invalidate_pose("aim")
+	lc.set_input("trigger", 0.0)
+	await _frames(3)
+	lc.set_input("trigger", 1.0)
+	_pose(hxf)
+	_aim_pose(Transform3D(Basis(), Vector3(0.0, 1.0, 0.0)))
+	await _frames(5)
+	ok(not pickup.has_picked_up(), "a pickup's input dropping while lost isn't opening")
+	ok(not ptr.is_action_pressed(), "nor a pointer's")
 	lc.set_input("trigger", 0.0)
 	lc.invalidate_pose("aim")

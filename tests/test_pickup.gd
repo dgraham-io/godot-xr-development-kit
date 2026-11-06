@@ -3,6 +3,7 @@ extends "res://tests/test_base.gd"
 
 func tests() -> Array[Callable]:
 	return [
+		_test_open_first_wobble,
 		_test_no_player_body,
 		_test_drop_on_exit,
 		_test_observe_only,
@@ -370,3 +371,24 @@ func _test_drop_on_exit() -> void:
 	hand.remove_child(pickup)
 	ok(reasons == [GXDKPickup.DropReason.EXITING], "leaving the tree isn't a release")
 	pickup.free()
+
+
+func _test_open_first_wobble() -> void:
+	lc.set_input("trigger", 1.0)
+	await _rig()
+	pickup.require_open_first = true
+	pickup.grab_threshold = 0.75
+	pickup.release_threshold = 0.4
+	pickup.grab_window = 0.35
+	_cart(_beside())
+	await _frames(5)
+	lc.set_input("trigger", 0.6)
+	await _frames(3)
+	lc.set_input("trigger", 1.0)
+	await _frames(5)
+	ok(not pickup.has_picked_up(), "a closed pinch wobbling to 0.6 hasn't opened")
+	lc.set_input("trigger", 0.4)
+	await _frames(3)
+	lc.set_input("trigger", 1.0)
+	await _frames(5)
+	ok(pickup.has_picked_up(), "at the release threshold it has")
