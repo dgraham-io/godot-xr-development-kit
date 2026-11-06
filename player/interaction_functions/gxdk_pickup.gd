@@ -131,9 +131,7 @@ static var _highlighted_bodies: Dictionary[Node3D, HighlightedBody]
 @export var grab_action: String = "grip"
 
 ## An optional second action that also grabs (for hand tracking: pinch and palm grab).
-## If our main action closes at any time during a hold, its opening ends the hold,
-## whatever this one reads: a hand curls when pinching, so this can read closed
-## with the pinch open. And then only a new rise of either action grabs again.
+## We can go from one to the other without dropping what we hold.
 @export var secondary_grab_action: String = ""
 
 ## Our grab input must go above this to grab.
@@ -215,12 +213,6 @@ var _has_opened: bool = false
 # Our main grab action on its own, as a curled hand can already read as our second one
 var _main_action_pressed: bool = false
 var _main_action_opened: bool = false
-
-# Our main action has closed during this hold, so it decides when it ends
-var _held_by_main_action: bool = false
-
-# We let go with our second action still closed, so we wait for either action to rise
-var _waiting_for_rise: bool = false
 
 # True if we've reported this grab in observe only mode
 var _grab_observed: bool = false
@@ -409,7 +401,6 @@ func pickup_object(object : GrabObject):
 
 	# Remember state
 	_picked_up = object.body
-	_held_by_main_action = _main_action_pressed
 
 	if object.body is RigidBody3D or object.body is PhysicalBone3D:
 		# Make sure our body doesn't collide with things we've picked up
@@ -526,7 +517,6 @@ func drop_held_object( \
 	_is_primary = false
 	_pivot_on_primary = false
 	_grab_as_static_body = false
-	_held_by_main_action = false
 
 	if _xr_player_object and (was_picked_up is RigidBody3D or was_picked_up is PhysicalBone3D):
 		GXDK.remove_collision_exception(_xr_player_object, was_picked_up)
@@ -725,23 +715,14 @@ func _process(delta):
 
 	# Check our grab status
 	var was_grab = _is_grab
+	var xr_grab_float : float = _get_grab_value()
 	var main_action_rose : bool = _update_main_action()
 	if main_action_rose:
 		_has_opened = true
-		_waiting_for_rise = false
-
-	if _picked_up and _main_action_pressed:
-		_held_by_main_action = true
-
-	if _waiting_for_rise and _get_action_value(secondary_grab_action) <= release_threshold:
-		_waiting_for_rise = false
-
-	var xr_grab_float : float = _get_held_value() if _picked_up else _get_grab_value()
 	var threshold : float = release_threshold if _was_xr_pressed else grab_threshold
 	if xr_grab_float <= release_threshold:
 		_has_opened = true
-	var xr_pressed : bool = xr_grab_float > threshold and (_has_opened or not require_open_first) \
-		and not _waiting_for_rise
+	var xr_pressed : bool = xr_grab_float > threshold and (_has_opened or not require_open_first)
 	if xr_pressed != _was_xr_pressed:
 		_was_xr_pressed = xr_pressed
 		if grab_toggle:
@@ -764,7 +745,6 @@ func _process(delta):
 			return
 
 		drop_held_object(linear_velocity, angular_velocity)
-		_waiting_for_rise = not secondary_grab_action.is_empty() and _get_grab_value() > release_threshold
 	elif observe_only:
 		_observe_grab()
 	elif _can_take_closest():
@@ -884,7 +864,7 @@ func _is_handling_tracking_loss(delta: float) -> bool:
 		return false
 
 	var tracked: bool = _have_tracking_data()
-	var still_grabbing: bool = _get_held_value() > release_threshold
+	var still_grabbing: bool = _get_grab_value() > release_threshold
 	if tracked and (_is_pinch_tracked() or still_grabbing):
 		if _lost_time > 0.0:
 			_recover_from_tracking_loss()
@@ -1377,14 +1357,6 @@ func _get_grab_value() -> float:
 		value = max(value, _get_action_value(secondary_grab_action))
 
 	return value
-
-
-# Returns the input that keeps our current hold going
-func _get_held_value() -> float:
-	if secondary_grab_action.is_empty():
-		return _get_grab_value()
-
-	return _get_action_value(grab_action if _held_by_main_action else secondary_grab_action)
 
 
 # Returns the value of one action
