@@ -71,6 +71,30 @@ class MovedEvent extends PointerEvent:
 ## Action in our action map that triggers our pressed state.
 @export var press_action: String = "trigger"
 
+## Our press action must go above this to press.
+@export_range(0.0, 1.0, 0.01) var press_threshold: float = 0.7
+
+## Our press action must go below this to release.
+@export_range(0.0, 1.0, 0.01) var release_threshold: float = 0.3
+
+## If true a press already held when this node starts doesn't count:
+## the hand has to open first (for instance when a scene is reloaded).
+@export var require_open_first: bool = false
+
+## If true we aim with the aim pose of our tracker, if it has one, instead of
+## a bone of our hand.
+@export var use_aim_pose: bool = false
+
+## The pose actions to try, in order, when using our aim pose.
+@export var aim_pose_actions: Array[String] = [ "aim", "aim_pose" ]
+
+## If not 0.0, smooth our aim pose: pinching moves the hand, so a raw ray
+## jitters. This cutoff in Hz applies while the hand is nearly still, lower is smoother.
+@export_range(0.0, 30.0, 0.1) var aim_smoothing: float = 0.0
+
+## How much less we smooth as our aim moves faster.
+@export_range(0.0, 30.0, 0.1) var aim_smoothing_speed: float = 3.0
+
 ## Color of our laser and target.
 @export var color: Color = Color(1.0, 0.0, 0.0):
 	set(value):
@@ -126,11 +150,31 @@ var _laser: MeshInstance3D
 var _target: MeshInstance3D
 var _override_laser_distance: float = 0.0
 var _xr_controller: XRController3D
+var _has_opened: bool = false
+var _aim_origin_filter: GXDKOneEuroFilter
+var _aim_direction_filter: GXDKOneEuroFilter
 
 # Controlling our focus and interactions
 var _focus_on: CollisionObject3D
 var _interacting_point: Vector3 = Vector3()
 var _interacting_pressed: bool = false
+#endregion
+
+
+#region Public functions
+## Returns [code]true[/code] if we're currently pressed.
+func is_pressed() -> bool:
+	return _interacting_pressed
+
+
+## Returns the object we're pointing at, if any.
+func get_target() -> CollisionObject3D:
+	return _focus_on
+
+
+## Returns the point we're pointing at.
+func get_target_point() -> Vector3:
+	return _interacting_point
 #endregion
 
 
@@ -167,14 +211,61 @@ func _is_action_pressed() -> bool:
 	elif _xr_controller:
 		input = _xr_controller.get_input(press_action)
 
+	var pressed: bool = false
 	if typeof(input) == TYPE_BOOL:
-		return input
+		pressed = input
 	elif typeof(input) == TYPE_FLOAT:
-		# Should make this settable
-		var threshold: float = 0.3 if _interacting_pressed else 0.7
-		return input > threshold
+		var threshold: float = release_threshold if _interacting_pressed else press_threshold
+		pressed = input > threshold
+
+	if not pressed:
+		_has_opened = true
+
+	return pressed and (_has_opened or not require_open_first)
+
+
+# Returns the tracker that has our aim pose.
+func _get_aim_tracker() -> XRPositionalTracker:
+	if _xr_collision_hand:
+		return _xr_collision_hand.get_controller_tracker()
+	elif _xr_controller:
+		return XRServer.get_tracker(_xr_controller.tracker)
+
+	return null
+
+
+# Point along our aim pose. Returns false if we have none.
+func _update_aim(delta: float) -> bool:
+	var tracker: XRPositionalTracker = _get_aim_tracker()
+	var origin: XROrigin3D = GXDK.get_xr_origin(self)
+	if not tracker or not origin:
+		return false
+
+	for action in aim_pose_actions:
+		var pose: XRPose = tracker.get_pose(action)
+		if pose and pose.has_tracking_data:
+			var aim: Transform3D = origin.global_transform * pose.get_adjusted_transform()
+			if aim_smoothing > 0.0:
+				if not _aim_origin_filter:
+					_aim_origin_filter = GXDKOneEuroFilter.new(aim_smoothing, aim_smoothing_speed)
+					_aim_direction_filter = GXDKOneEuroFilter.new(aim_smoothing, aim_smoothing_speed)
+				aim.origin = _aim_origin_filter.filter(aim.origin, delta)
+				var forward: Vector3 = _aim_direction_filter.filter(-aim.basis.z.normalized(), delta)
+				if forward.length_squared() > 0.0001:
+					var up: Vector3 = Vector3.UP if absf(forward.normalized().y) < 0.99 else Vector3.FORWARD
+					aim.basis = Basis.looking_at(forward.normalized(), up)
+			global_transform = aim
+			return true
 
 	return false
+
+
+# With an aim pose, a bone of our hand doesn't position us.
+func _on_skeleton_updated():
+	if use_aim_pose:
+		return
+
+	super()
 
 
 # Update our properties
@@ -237,7 +328,7 @@ func _exit_tree():
 	super()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# In editor we don't do this
 	if Engine.is_editor_hint():
 		return
@@ -246,6 +337,10 @@ func _process(_delta: float) -> void:
 	if not enabled:
 		_target.visible = false
 		return
+
+	if use_aim_pose and _update_aim(delta):
+		# Our ray doesn't wait for the next physics step
+		_raycast.force_raycast_update()
 
 	var pressed: bool = _is_action_pressed()
 

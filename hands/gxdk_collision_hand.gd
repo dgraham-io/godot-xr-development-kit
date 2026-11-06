@@ -388,6 +388,11 @@ func get_pose_transform(pose_action : String) -> Transform3D:
 	return Transform3D()
 
 
+## Returns the controller tracker for this hand, if any.
+func get_controller_tracker() -> XRControllerTracker:
+	return _controller_tracker
+
+
 ## Returns value for an associated action
 func get_input(action_name) -> Variant:
 	if _controller_tracker:
