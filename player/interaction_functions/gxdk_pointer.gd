@@ -65,6 +65,9 @@ class MovedEvent extends PointerEvent:
 			_released()
 		if _focus_on and not enabled:
 			_loose_focus()
+		if not enabled:
+			_action_pressed = false
+			_reset_aim_smoothing()
 
 		set_process(enabled and not Engine.is_editor_hint())
 
@@ -87,6 +90,10 @@ class MovedEvent extends PointerEvent:
 
 ## The pose actions to try, in order, when using our aim pose.
 @export var aim_pose_actions: Array[String] = [ "aim", "aim_pose" ]
+
+## If true a press held while we move onto an object presses it.
+## If false only a press started while pointing at it does.
+@export var press_on_arrival: bool = true
 
 ## If not 0.0, smooth our aim pose: pinching moves the hand, so a raw ray
 ## jitters. This cutoff in Hz applies while the hand is nearly still, lower is smoother.
@@ -151,6 +158,9 @@ var _target: MeshInstance3D
 var _override_laser_distance: float = 0.0
 var _xr_controller: XRController3D
 var _has_opened: bool = false
+var _action_pressed: bool = false
+var _pressed_elsewhere: bool = false
+var _has_aim_pose: bool = false
 var _aim_origin_filter: GXDKOneEuroFilter
 var _aim_direction_filter: GXDKOneEuroFilter
 
@@ -162,9 +172,19 @@ var _interacting_pressed: bool = false
 
 
 #region Public functions
-## Returns [code]true[/code] if we're currently pressed.
+## Returns [code]true[/code] if we're currently pressing an object.
 func is_pressed() -> bool:
 	return _interacting_pressed
+
+
+## Returns [code]true[/code] if our press action is pressed, pointing at something or not.
+func is_action_pressed() -> bool:
+	return _action_pressed
+
+
+## Returns [code]true[/code] if we're pointing along our aim pose this frame.
+func has_aim_pose() -> bool:
+	return _has_aim_pose
 
 
 ## Returns the object we're pointing at, if any.
@@ -215,13 +235,19 @@ func _is_action_pressed() -> bool:
 	if typeof(input) == TYPE_BOOL:
 		pressed = input
 	elif typeof(input) == TYPE_FLOAT:
-		var threshold: float = release_threshold if _interacting_pressed else press_threshold
+		var threshold: float = release_threshold if _action_pressed else press_threshold
 		pressed = input > threshold
 
 	if not pressed:
 		_has_opened = true
 
 	return pressed and (_has_opened or not require_open_first)
+
+
+# Forget our smoothing, so we don't ease in from where we last were.
+func _reset_aim_smoothing() -> void:
+	_aim_origin_filter = null
+	_aim_direction_filter = null
 
 
 # Returns the tracker that has our aim pose.
@@ -239,6 +265,7 @@ func _update_aim(delta: float) -> bool:
 	var tracker: XRPositionalTracker = _get_aim_tracker()
 	var origin: XROrigin3D = GXDK.get_xr_origin(self)
 	if not tracker or not origin:
+		_reset_aim_smoothing()
 		return false
 
 	for action in aim_pose_actions:
@@ -257,6 +284,7 @@ func _update_aim(delta: float) -> bool:
 			global_transform = aim
 			return true
 
+	_reset_aim_smoothing()
 	return false
 
 
@@ -338,11 +366,15 @@ func _process(delta: float) -> void:
 		_target.visible = false
 		return
 
-	if use_aim_pose and _update_aim(delta):
+	_has_aim_pose = use_aim_pose and _update_aim(delta)
+	if _has_aim_pose:
 		# Our ray doesn't wait for the next physics step
 		_raycast.force_raycast_update()
 
 	var pressed: bool = _is_action_pressed()
+	if pressed and not _action_pressed:
+		_pressed_elsewhere = not _raycast.is_colliding()
+	_action_pressed = pressed
 
 	if _interacting_pressed and _interacting_pressed != pressed:
 		_released()
@@ -362,7 +394,7 @@ func _process(delta: float) -> void:
 		if _interacting_point != point:
 			_moved(point)
 
-		if pressed and _interacting_pressed != pressed:
+		if pressed and _interacting_pressed != pressed and (press_on_arrival or not _pressed_elsewhere):
 			_pressed()
 	else:
 		_target.visible = false
