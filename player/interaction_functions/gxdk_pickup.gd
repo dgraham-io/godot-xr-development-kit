@@ -306,7 +306,9 @@ func pickup_object(object : GrabObject):
 
 	if object.body is RigidBody3D or object.body is PhysicalBone3D:
 		# Make sure our body doesn't collide with things we've picked up
-		GXDK.add_collision_exception(_xr_player_object, object.body)
+		# Note: a seated player may not have a body.
+		if _xr_player_object:
+			GXDK.add_collision_exception(_xr_player_object, object.body)
 
 		# Get some behaviour characteristics
 		var rigid_body_behaviour: GXDKRigidBodyBehaviour = GXDKRigidBodyBehaviour.get_behaviour_node(object.body)
