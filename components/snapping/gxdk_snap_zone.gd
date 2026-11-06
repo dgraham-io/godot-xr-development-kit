@@ -166,7 +166,9 @@ func get_axis_assist(at: Vector3) -> float:
 	if local.y > axis_length or local.y < -0.03 or lateral > axis_radius:
 		return 0.0
 
-	return smoothstep(0.0, 1.0, 1.0 - lateral / axis_radius) * smoothstep(0.0, 1.0, (axis_length - local.y) / (axis_length * 0.4))
+	var along_radius: float = smoothstep(0.0, 1.0, 1.0 - lateral / axis_radius)
+	var along_axis: float = smoothstep(0.0, 1.0, (axis_length - local.y) / (axis_length * 0.4))
+	return along_radius * along_axis
 
 
 ## Returns this global transform, eased into line with our axis as far as we help it.

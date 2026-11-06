@@ -99,7 +99,7 @@ var _now: float = 0.0
 ## Advance our touch by a frame. Positions are in the plane of the control.
 ## Returns an empty dictionary, or any of:
 ## [code]started[/code] (position),
-## [code]pos[/code] and [code]delta[/code] (smoothed position, and how far it moved, once past the slop),
+## [code]pos[/code] and [code]delta[/code] (smoothed position and how far it moved, past the slop),
 ## [code]ended[/code] (true) with [code]tap[/code] (bool) and [code]fling[/code] (velocity).
 ##
 ## [param tip_inside] our fingertip is within the control's outline.

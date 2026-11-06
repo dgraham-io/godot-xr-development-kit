@@ -173,8 +173,9 @@ func _palm_faces_head() -> bool:
 			return false
 		_xr_camera = cameras[0]
 
+	var palm_joint : int = XRHandTracker.HAND_JOINT_PALM
 	var palm_transform : Transform3D = \
-		_xr_origin.global_transform * _hand_tracker.get_hand_joint_transform(XRHandTracker.HAND_JOINT_PALM)
+		_xr_origin.global_transform * _hand_tracker.get_hand_joint_transform(palm_joint)
 	var to_head : Vector3 = _xr_camera.global_position - palm_transform.origin
 	if to_head.length() > palm_distance:
 		return false

@@ -41,7 +41,8 @@ signal picked_up(by : GXDKPickup, what : PhysicsBody3D)
 ## Inform that this hand has dropped this object (also if this object is still held by the other hand).
 signal dropped(by : GXDKPickup, what : PhysicsBody3D)
 
-## Inform what we would have picked up (null if nothing). Only emitted with [member observe_only] on.
+## Inform what we would have picked up (null if nothing).
+## Only emitted with [member observe_only] on.
 signal observed_grab(by : GXDKPickup, what : PhysicsBody3D)
 #endregion
 
@@ -813,7 +814,8 @@ func _process_locomotion(delta: float) -> void:
 	elif not _xr_player_object:
 		# No player object to run our logic on, no need to run this.
 		return
-	elif _picked_up.has_method("_xr_custom_pickup_handler") or _picked_up.has_method("_xr_custom_pickup_process"):
+	elif _picked_up.has_method("_xr_custom_pickup_handler") \
+		or _picked_up.has_method("_xr_custom_pickup_process"):
 		# Has a custom handler, no need to run this.
 		return
 	elif not _grab_as_static_body:
@@ -899,7 +901,8 @@ func _is_pinch_tracked() -> bool:
 	if not hand_tracker.get_hand_joint_flags(XRHandTracker.HAND_JOINT_THUMB_TIP) & tracked:
 		return false
 
-	return hand_tracker.get_hand_joint_flags(XRHandTracker.HAND_JOINT_INDEX_FINGER_TIP) & tracked != 0
+	var index_joint: int = XRHandTracker.HAND_JOINT_INDEX_FINGER_TIP
+	return hand_tracker.get_hand_joint_flags(index_joint) & tracked != 0
 
 
 # Lets an object follow our hand at display rate, which needn't match our physics rate.
@@ -912,7 +915,8 @@ func _update_custom_process(delta: float) -> void:
 	if controller_target == Transform3D():
 		return
 
-	_picked_up._xr_custom_pickup_process(self, delta, controller_target, controller_target * _grab_offset.inverse())
+	var global_target: Transform3D = controller_target * _grab_offset.inverse()
+	_picked_up._xr_custom_pickup_process(self, delta, controller_target, global_target)
 
 
 # Returns true if our pickup feature is attached to the left hand.
@@ -978,8 +982,10 @@ func _get_detection_transform() -> Transform3D:
 	if detect_from_pinch_point and _xr_collision_hand:
 		var hand_tracker: XRHandTracker = _xr_collision_hand.get_hand_tracker()
 		if hand_tracker:
-			var thumb: Vector3 = hand_tracker.get_hand_joint_transform(XRHandTracker.HAND_JOINT_THUMB_TIP).origin
-			var index: Vector3 = hand_tracker.get_hand_joint_transform(XRHandTracker.HAND_JOINT_INDEX_FINGER_TIP).origin
+			var thumb_joint: int = XRHandTracker.HAND_JOINT_THUMB_TIP
+			var index_joint: int = XRHandTracker.HAND_JOINT_INDEX_FINGER_TIP
+			var thumb: Vector3 = hand_tracker.get_hand_joint_transform(thumb_joint).origin
+			var index: Vector3 = hand_tracker.get_hand_joint_transform(index_joint).origin
 			var parent: Node3D = _xr_collision_hand.get_parent()
 			return Transform3D(global_basis, parent.global_transform * ((thumb + index) * 0.5))
 
