@@ -210,10 +210,6 @@ var _drop_reason: DropReason = DropReason.RELEASED
 # True once our hand has been open since we started
 var _has_opened: bool = false
 
-# Our main grab action on its own, as a curled hand can already read as our second one
-var _main_action_pressed: bool = false
-var _main_action_opened: bool = false
-
 # True if we've reported this grab in observe only mode
 var _grab_observed: bool = false
 
@@ -716,9 +712,6 @@ func _process(delta):
 	# Check our grab status
 	var was_grab = _is_grab
 	var xr_grab_float : float = _get_grab_value()
-	var main_action_rose : bool = _update_main_action()
-	if main_action_rose:
-		_has_opened = true
 	var threshold : float = release_threshold if _was_xr_pressed else grab_threshold
 	if xr_grab_float <= release_threshold:
 		_has_opened = true
@@ -733,7 +726,7 @@ func _process(delta):
 		# Toggle
 		_is_grab = not _is_grab
 
-	if _is_grab and (not was_grab or main_action_rose):
+	if _is_grab and not was_grab:
 		_grab_age = 0.0
 		_grab_observed = false
 	elif _is_grab:
@@ -841,23 +834,6 @@ func _process_locomotion(delta: float) -> void:
 
 
 #region Private functions
-# Returns true if our main grab action rose this frame after opening.
-# With a second grab action our grab can already be closed then, and this still is a new grab.
-func _update_main_action() -> bool:
-	if secondary_grab_action.is_empty():
-		return false
-
-	var value: float = _get_action_value(grab_action)
-	if value <= release_threshold:
-		_main_action_opened = true
-		_main_action_pressed = false
-	elif value > grab_threshold and not _main_action_pressed:
-		_main_action_pressed = true
-		return _main_action_opened
-
-	return false
-
-
 # Returns true if tracking loss has taken over this frame
 func _is_handling_tracking_loss(delta: float) -> bool:
 	if loss_release_time <= 0.0 or not is_instance_valid(_picked_up):
